@@ -26,6 +26,7 @@ public class OpenTSDB implements CollectdWriteInterface,
 {
     private String      server = "localhost";
     private String      port   = "4242";
+    private String      file_name = "/tmp/json_sent.json";
     private PrintStream _out;
     private Socket      socket;
 
@@ -40,7 +41,7 @@ public class OpenTSDB implements CollectdWriteInterface,
     {
         try {
           Collectd.logInfo ("OpenTSDB plugin: server: " + server + ", port: " + port);
-          socket = new Socket (server, 4242);
+          socket = new Socket (server, Integer.parseInt(port));
           _out   = new PrintStream(socket.getOutputStream());
         } catch (UnknownHostException e) {
           Collectd.logError ("Couldn't establish connection: " + e.getMessage());
@@ -85,7 +86,7 @@ public class OpenTSDB implements CollectdWriteInterface,
         type           = vl.getType();
         typeInstance   = vl.getTypeInstance();
 
-        // Collectd.logInfo("plugin: " + plugin + " pluginInstance: " + pluginInstance + " type: " + type + " typeInstance: " + typeInstance);
+        Collectd.logInfo("plugin: " + plugin + " pluginInstance: " + pluginInstance + " type: " + type + " typeInstance: " + typeInstance);
 
         // FIXME: refactor to switch?
         if ( plugin != null && !plugin.isEmpty() ) {
@@ -137,6 +138,8 @@ public class OpenTSDB implements CollectdWriteInterface,
 
     return(0);
   }
+
+  
 
   public static String join(Collection<String> s, String delimiter) {
       StringBuffer buffer = new StringBuffer();
