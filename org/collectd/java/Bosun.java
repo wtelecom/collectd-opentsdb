@@ -1,13 +1,3 @@
-package org.collectd.java;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.io.*;
-import java.net.*;
 
 import org.collectd.api.Collectd;
 import org.collectd.api.ValueList;
@@ -19,37 +9,39 @@ import org.collectd.api.CollectdWriteInterface;
 import org.collectd.api.OConfigValue;
 import org.collectd.api.OConfigItem;
 
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.HttpClientBuilder;
 
-public class OpenTSDB implements CollectdWriteInterface,
+public class Bosun implements CollectdWriteInterface,
     CollectdInitInterface,
     CollectdConfigInterface
 {
-    private String      server = "localhost";
-    private String      port   = "4242";
-    private String      file_name = "/tmp/json_sent.json";
-    private PrintStream _out;
-    private Socket      socket;
+    private String    server = "localhost";
+    private String    port   = "8070";
+    private String    plugin_name = "Bosun";
 
-    public OpenTSDB ()
+
+    public Bosun ()
     {
-        Collectd.registerInit   ("OpenTSDB", this);
-        Collectd.registerWrite  ("OpenTSDB", this);
-        Collectd.registerConfig ("OpenTSDB", this);
+        Collectd.registerInit   (plugin_name, this);
+        Collectd.registerWrite  (plugin_name, this);
+        Collectd.registerConfig (plugin_name, this);
     }
 
     public int init ()
     {
         try {
-          Collectd.logInfo ("OpenTSDB plugin: server: " + server + ", port: " + port);
-          socket = new Socket (server, Integer.parseInt(port));
-          _out   = new PrintStream(socket.getOutputStream());
+          Collectd.logInfo ("Bosun plugin: server: " + server + ", port: " + port);
+          
         } catch (UnknownHostException e) {
           Collectd.logError ("Couldn't establish connection: " + e.getMessage());
           System.exit(1);
-        } catch (IOException e) {
-          Collectd.logError ("Couldn't send data: " + e.getMessage());
-          System.exit(1);
-        }
+        } 
+
         return(0);
     }
 
@@ -58,22 +50,16 @@ public class OpenTSDB implements CollectdWriteInterface,
     List<DataSource> ds = vl.getDataSet().getDataSources();
     List<Number> values = vl.getValues();
     int size            = values.size();
-    StringBuffer sb = new StringBuffer();
-
-    Collectd.logInfo( "vl param: " +vl.toString());
 
     for (int i=0; i<size; i++) {
-        // Buffer
-        sb.setLength(0);
-        sb.append("put ");
-
+        
+        // Metric name
         String    name, 
                   pointName,
                   plugin, 
                   pluginInstance,
-                  type,
+                  type, 
                   typeInstance;
-
         ArrayList<String> parts = new ArrayList<String>();
         ArrayList<String> tags = new ArrayList<String>();
 
@@ -84,37 +70,30 @@ public class OpenTSDB implements CollectdWriteInterface,
 
         Collectd.logInfo("plugin: " + plugin + " pluginInstance: " + pluginInstance + " type: " + type + " typeInstance: " + typeInstance);
 
-        /*
-        *     metric             value  
-        *             timestamp            tags
-        *                   
-        * put cpufreq 1429178065 1.2E9 host=ssotoTest14 source=collectd cpufreq_type=cpufreq cpufreq_type_instance=3
-        */
-
-        // FIXME: refactor to switch?
+        
+        
         if ( plugin != null && !plugin.isEmpty() ) {
-            parts.add(plugin);
-            if ( pluginInstance != null && !pluginInstance.isEmpty() ) {
-                tags.add(plugin + "_instance=" + pluginInstance);
-            }
-            if ( type != null && !type.isEmpty()) {
-                tags.add(plugin + "_type=" + type);
-            }
-            if ( typeInstance != null && !typeInstance.isEmpty() ) {
-                tags.add(plugin + "_type_instance=" + typeInstance);
-            }
+          parts.add(plugin);
+          if ( pluginInstance != null && !pluginInstance.isEmpty() ) {
+              tags.add(plugin + "_instance=" + pluginInstance);
+          }
+          if ( type != null && !type.isEmpty()) {
+              tags.add(plugin + "_type=" + type);
+          }
+          if ( typeInstance != null && !typeInstance.isEmpty() ) {
+              tags.add(plugin + "_type_instance=" + typeInstance);
+          }
 
-            pointName = ds.get(i).getName();
-            if (!pointName.equals("value")) {
-              // Collectd.logInfo("pointName: " + pointName);
-              tags.add(plugin + "_point=" + pointName);
-            }
+          pointName = ds.get(i).getName();
+          if (!pointName.equals("value")) {
+            // Collectd.logInfo("pointName: " + pointName);
+            tags.add(plugin + "_point=" + pointName);
+          }
         }
 
-        // metric name
-        name = join(parts, ".");
+        
 
-        sb.append(name).append(' ');
+        sb.append("\"name\":" + join(parts, ".") + "\",");
 
         // Time
         long time = vl.getTime() / 1000;
@@ -135,23 +114,42 @@ public class OpenTSDB implements CollectdWriteInterface,
 
         String output = sb.toString();
 
-        // Send to OpenTSDB
+        // Send to Bosun
+        String json =this.sendJSON()
         Collectd.logInfo(output);
-        _out.println(output);
     }
 
     return(0);
   }
 
-  // {
-  //     "metric": "sys.cpu.nice",
-  //     "timestamp": 1346846400,
-  //     "value": 18,
-  //     "tags": {
-  //        "host": "web01",
-  //        "dc": "lga"
-  //     }
-  // }
+  /*
+  *  JSON format:
+  *
+  *    "{\"metric\":\"custom.my.metic\",\"timestamp\":" + unixTime + ",\"value\":14,\"tags\":{\"host\":\"ssotoTest16\"}}"
+  *
+  */
+  private int sendJSON(String json){
+    
+    HttpClient httpClient = HttpClientBuilder.create().build(); 
+    int result = 0;
+    try {
+        HttpPost request = new HttpPost( "http://" + this.server + this.port+ "/api/post");
+        StringEntity params =new StringEntity("details={\"name\":\"myname\",\"age\":\"20\"} ");
+        request.addHeader("content-type", "application/x-www-form-urlencoded");
+        request.setEntity(params);
+        HttpResponse response = httpClient.execute(request);
+
+        // handle response here...
+    }catch (Exception ex) {
+        // handle exception here
+        Collectd.logError("Error sending json request: " + ex.toString());
+        result = 1;
+    } finally {
+        httpClient.getConnectionManager().shutdown();
+        return result;
+    }
+  }
+
   public static String join(Collection<String> s, String delimiter) {
       StringBuffer buffer = new StringBuffer();
       Iterator<String> iter = s.iterator();
@@ -169,7 +167,7 @@ public class OpenTSDB implements CollectdWriteInterface,
     List<OConfigItem> children;
     int i;
 
-    Collectd.logDebug ("OpenTSDB plugin: config: ci = " + ci + ";");
+    Collectd.logDebug ("Bosun plugin: config: ci = " + ci + ";");
 
     children = ci.getChildren ();
     for (i = 0; i < children.size (); i++)
@@ -185,7 +183,7 @@ public class OpenTSDB implements CollectdWriteInterface,
         values = child.getValues();
         if (values.size () != 2)
         {
-            Collectd.logError ("OpenTSDB plugin: " + key +
+            Collectd.logError ("Bosun plugin: " + key +
                 "configuration option needs exactly two arguments: server + port");
             return (1);
         } else {
@@ -195,7 +193,7 @@ public class OpenTSDB implements CollectdWriteInterface,
       }
       else
       {
-        Collectd.logError ("OpenTSDB plugin: Unknown config option: " + key);
+        Collectd.logError ("Bosun plugin: Unknown config option: " + key);
       }
     } /* for (i = 0; i < children.size (); i++) */
 
