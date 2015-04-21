@@ -29,6 +29,7 @@ public class Bosun implements CollectdWriteInterface,
 {
     private String      server = "localhost";
     private String      port   = "8070";
+    private String 		custom_data = "";
 
     public Bosun ()
     {
@@ -99,6 +100,10 @@ public class Bosun implements CollectdWriteInterface,
               tags.add(plugin + "_point=" + pointName);
               tagMap.put(plugin + "_point", pointName);
             }
+        }
+        
+        if (custom_data.length()>0){
+        	tagMap.put("custom_data", custom_data);
         }
 
         name = join(parts, ".");
@@ -174,7 +179,15 @@ public class Bosun implements CollectdWriteInterface,
             port   = values.get(1).toString();
         }
       }
-      else
+      else if (key.equalsIgnoreCase("custom_data"))
+      {
+    	  values = child.getValues();
+    	  if (values.size() > 0)
+    	  {
+    		  custom_data = values.get(0).toString();
+    	  }
+    	  
+      } else
       {
         Collectd.logError ("Bosun plugin: Unknown config option: " + key);
       }
